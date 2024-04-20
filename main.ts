@@ -1,21 +1,23 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting} from 'obsidian';
 
-import { spawn } from "child_process";
+import {spawn} from "child_process";
 
 var stdOut = ''
 var stdErr = ''
 var stdCode = 0
+const syncPull = "pull"
+const syncPush = "push"
 
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
-	cmd: string;
+	push: string;
 	pull: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-	cmd: '',
-	pull: '',
+	push: '/you/path/push.sh',
+	pull: '/you/path/pull.sh',
 }
 
 export default class MyPlugin extends Plugin {
@@ -25,151 +27,91 @@ export default class MyPlugin extends Plugin {
 		await this.loadSettings();
 
 
-		let runSync = () => {
-			if (!this.settings.cmd) {
-				new Notice(`sync shell empty.`);
-				return;
-			}
-
-			stdOut = "running..."
-
+		let runSync = (syncType: string) => {
+			stdOut = ''
 			let modal = new RunningModal(this.app)
 			modal.open();
 			try {
 				// 要执行的 shell 命令
-				const command = 'sh';
+				const command = '/bin/bash';
 				// 传递给 shell 的参数
-				const args = ['-c', this.settings.cmd];
-				const child = spawn(command, args, { shell: true });
+				let args = ['-c', this.settings.push];
+				if (syncType === syncPull) {
+					args = ['-c', this.settings.pull];
+				}
+
+				console.log('--- args ',syncPull , args)
+				const child = spawn(command, args, {shell: true});
 
 				// 监听子进程的标准输出
 				child.stdout.on('data', (data) => {
 					console.log(`stdout: -${data}-`, typeof data);
-					stdOut = data.toString().replace(/\n/g, '')
-					
-					if (stdOut && stdOut !== '') {
-						modal.setContent(`stdCode: ${stdCode}, \nstdOut: ${stdOut}  \nstdErr:  ${stdErr}`)
+					stdOut = data.toString()
+
+					if (stdOut || stdOut !== '') {
+						modal.contentEl.createEl("div", {text: stdOut });
 					}
 				});
-				
+
 				// 监听子进程的标准错误
 				child.stderr.on('data', (data) => {
 					console.error(`stderr: ${data}`);
-					stdErr = data.toString().replace(/\n/g, '')
-	
-					if (data && stdErr !== '') {
-						// modal.containerEl = `stdCode: ${stdCode} \nstdOut: ${stdOut}  \nstdErr:  ${stdErr}`
-						modal.setContent(`stdError: ${stdErr}.`)
+					stdErr = data.toString()
+					if (data || stdErr !== '') {
+						let errorDiv = modal.contentEl.createEl("div", {text: stdErr });
+						errorDiv.addClass("shell-run-error-style");
 					}
 				});
-				
+
 				// 监听子进程的退出事件
 				child.on('close', (code) => {
 					console.log(`子进程退出，退出码 ${code}`);
 					stdCode = code ? code : -1
-					
-					if (code === 0 ) {
-						modal.setContent(`success. \nstdOut: ${stdOut}`)
+
+					if (code === 0) {
+						modal.contentEl.createEl("div", {text: "success" });
 					} else {
-						modal.setContent(`stdCode: ${stdCode}, \nstdErr:  ${stdErr}`)
+						// modal.setContent(`exit error:  ${stdErr}`)
+						let errorDiv = modal.contentEl.createEl("div", {text: stdErr });
+						errorDiv.addClass("shell-run-error-style");
 					}
 				});
 
-				
+
 			} catch (error) {
 				console.log('error ', error)
-				modal.setContent("error: " + error)
-			}			
+				modal.contentEl.createEl("div", {text: error });
+			}
 
 		}
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('monitor-play', 'shell sync', async (evt: MouseEvent) => {
-
-			runSync()
-			// new Notice('Executing >_ ' + this.settings.cmd);
-
-			// try {
-			// 	const output = execSync(this.settings.cmd);
-			// 	new Notice(`FINISHED: ${output.toString()}`);
-			//   } catch (error) {
-			// 	new Notice(`ERROR: ${error.message}`);
-			//   }
-
-			// exec(this.settings.cmd, (error, stdout, stderr) => {
-			// 	if (error) {
-			// 	  new Notice(`ERROR: ${error.message}`);
-			// 	  return;
-			// 	}
-			// 	if (stderr) {
-			// 	  new Notice(`ERROR: ${stderr}`);
-			// 	  return;
-			// 	}
-
-			// 	new Notice(`FINISHED: ${stdout}`);
-			// });
-
+			runSync(syncPush)
 		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		// 添加状态栏文字
-		// const statusBarItemEl = this.addStatusBarItem();
-		// statusBarItemEl.setText('Status Bar Text');
-
-		// This adds a simple command that can be triggered anywhere
 		// 添加快捷键
 		this.addCommand({
-			id: 'shell sync',
-			name: 'shell sync',
+			id: 'shell sync pull',
+			name: 'shell sync(pull)',
 			callback: () => {
-				// new SampleModal(this.app).open();
-				runSync();
+				runSync(syncPull);
 			}
 		});
 
-		// 
-		// This adds an editor command that can perform some operation on the current editor instance
-		// this.addCommand({
-		// 	id: 'shell-sync-command',
-		// 	name: 'shell sync command',
-		// 	editorCallback: (editor: Editor, view: MarkdownView) => {
-		// 		console.log(editor.getSelection());
-		// 		editor.replaceSelection('Sample Editor Command');
-		// 	}
-		// });
 
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		// this.addCommand({
-		// 	id: 'shell sync',
-		// 	name: 'shell sync',
-		// 	checkCallback: (checking: boolean) => {
-		// 		// Conditions to check
-		// 		const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		// 		if (markdownView) {
-		// 			// If checking is true, we're simply "checking" if the command can be run.
-		// 			// If checking is false, then we want to actually perform the operation.
-		// 			if (!checking) {
-		// 				new SampleModal(this.app).open();
-		// 			}
+		this.addCommand({
+			id: 'shell sync push ',
+			name: 'shell sync(push)',
+			callback: () => {
+				runSync(syncPush);
+			}
+		});
 
-		// 			// This command will only show up in Command Palette when the check function returns true
-		// 			return true;
-		// 		}
-		// 	}
-		// });
+
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		// this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-		// 	console.log('click ---- ', evt);
-		// });
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 1000));
 	}
 
@@ -209,7 +151,7 @@ class RunningModal extends Modal {
 
 	onOpen() {
 		const {contentEl} = this;
-		contentEl.setText("shell sync: \n running ....");
+		contentEl.createEl("div", {text: "running"});
 	}
 
 	onClose() {
@@ -232,14 +174,27 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Shell')
-			.setDesc('Command line shell script')
-			.addText(text => text
+			.setName('Pull Shell')
+			.setDesc('Pull sync command line shell script for ')
+			.addTextArea(text => text
 				.setPlaceholder('Enter your command line shell script')
-				.setValue(this.plugin.settings.cmd)
+				.setValue(this.plugin.settings.pull)
 				.onChange(async (value) => {
-					this.plugin.settings.cmd = value;
+					this.plugin.settings.pull = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('Push Shell')
+			.setDesc('Push sync command line shell script for ')
+			.addTextArea(text => text
+				.setPlaceholder('Enter your command line shell script')
+				.setValue(this.plugin.settings.push)
+				.onChange(async (value) => {
+					this.plugin.settings.push = value;
+					await this.plugin.saveSettings();
+				}));
+
+
 	}
 }

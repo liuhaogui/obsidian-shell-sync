@@ -6,3 +6,11 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+.shell-run-error-style{
+	color: red;
+}
+
+.shell-run-success-style{
+	color: green;
+}
